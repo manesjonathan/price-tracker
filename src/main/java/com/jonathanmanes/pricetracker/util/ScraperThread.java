@@ -71,20 +71,18 @@ public class ScraperThread extends Thread {
             product.prices.add(currentPrice);
             this.productRepository.save(product);
 
-
-            //if (flag == 0) {
-
             Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
 
-            for (String user : product.usersTracking) {
+            if (flag == 0) {
+                for (String user : product.usersTracking) {
 
-                Message.creator(
-                        new com.twilio.type.PhoneNumber(user),
-                        new com.twilio.type.PhoneNumber(TWILIO_PHONE_NUMBER),
-                        ("Price for your tracked product " + product.name + " has dropped to - " + currentPrice)
-                ).create();
+                    Message.creator(
+                            new com.twilio.type.PhoneNumber(user),
+                            new com.twilio.type.PhoneNumber(TWILIO_PHONE_NUMBER),
+                            ("Price for your tracked product " + product.name + " has dropped to - " + currentPrice)
+                    ).create();
+                }
             }
-            //}
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -107,7 +105,7 @@ class ProductScraperJob {
     @Value("${twilio.auth.token}")
     private String AUTH_TOKEN;
 
-    @Scheduled(cron = "0 * * * * ?")
+    @Scheduled(cron = "0 0 * * * ?")
     public void scrapeProducts() {
         List<Product> products = productRepository.findAll();
         for (Product product : products) {
