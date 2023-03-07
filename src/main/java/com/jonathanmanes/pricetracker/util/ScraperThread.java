@@ -1,54 +1,55 @@
 package com.jonathanmanes.pricetracker.util;
 
-import java.util.*;
-import java.text.*;
-import java.lang.*;
-
-import java.io.IOException;
-
 import com.jonathanmanes.pricetracker.model.Product;
 import com.jonathanmanes.pricetracker.repository.ProductRepository;
-import org.jsoup.*;
+import com.twilio.Twilio;
+import com.twilio.rest.api.v2010.account.Message;
+import jakarta.annotation.Resource;
+import lombok.RequiredArgsConstructor;
+import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
-import org.springframework.beans.factory.annotation.Autowired;
-
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import com.twilio.Twilio;
-import com.twilio.rest.api.v2010.account.Message;
 
-class ScraperThread extends Thread {
+import java.io.IOException;
+import java.text.NumberFormat;
+import java.text.ParseException;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+
+public class ScraperThread extends Thread {
+
     private final Product product;
 
-    @Value("${twilio.account.sid}")
-    private String ACCOUNT_SID;
+    private final String TWILIO_PHONE_NUMBER;
 
-    @Value("${twilio.auth.token}")
-    private String AUTH_TOKEN ;
+    private final String ACCOUNT_SID;
 
-    public final ProductRepository productRepository;
+    private final String AUTH_TOKEN;
 
-    public ScraperThread(Product product, ProductRepository productRepository) {
+    private final ProductRepository productRepository;
+
+    public ScraperThread(Product product, ProductRepository productRepository, String AUTH_TOKEN, String ACCOUNT_SID, String TWILIO_PHONE_NUMBER) {
+        this.AUTH_TOKEN = AUTH_TOKEN;
+        this.ACCOUNT_SID = ACCOUNT_SID;
+        this.TWILIO_PHONE_NUMBER = TWILIO_PHONE_NUMBER;
         this.product = product;
         this.productRepository = productRepository;
     }
 
+    @Override
     public void run() {
-        Document doc;
         try {
-            doc = Jsoup.connect(this.product.url).userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6").get();
+            Document doc = Jsoup.connect(this.product.url).userAgent("Mozilla/5.0 (Windows; U; WindowsNT 5.1; en-US; rv1.8.1.6) Gecko/20070725 Firefox/2.0.0.6").get();
 
             Elements priceSpan = doc.select(".a-price-whole");
-            Elements productTitleElem = doc.select("#productTitle");
-
-            String productTitle = productTitleElem.first().text();
             NumberFormat format = NumberFormat.getInstance(Locale.US);
             int currentPrice = 0;
             try {
-                currentPrice = format.parse(priceSpan.first().text()).intValue();
+                currentPrice = format.parse(Objects.requireNonNull(priceSpan.first()).text()).intValue();
             } catch (ParseException e) {
                 e.printStackTrace();
             }
@@ -60,7 +61,7 @@ class ScraperThread extends Thread {
 
             int flag = 0;
 
-            for(Integer value: product.prices) {
+            for (Integer value : product.prices) {
                 if (value <= currentPrice) {
                     flag = 1;
                     break;
@@ -70,23 +71,20 @@ class ScraperThread extends Thread {
             product.prices.add(currentPrice);
             this.productRepository.save(product);
 
-            Message.creator(
-                    new com.twilio.type.PhoneNumber("+32497526677"),
-                    new com.twilio.type.PhoneNumber("+32460238693"),
-                    ("Price for your tracked product " + product.name + " has dropped to - " + currentPrice)
-            ).create();
-            if (flag == 0) {
 
-                Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
+            //if (flag == 0) {
 
-                for (String user: product.usersTracking) {
-                    Message.creator(
-                            new com.twilio.type.PhoneNumber(user),
-                            new com.twilio.type.PhoneNumber("+32460238693"),
-                            ("Price for your tracked product " + product.name + " has dropped to - " + currentPrice)
-                    ).create();
-                }
+            Twilio.init(ACCOUNT_SID, AUTH_TOKEN);
+
+            for (String user : product.usersTracking) {
+
+                Message.creator(
+                        new com.twilio.type.PhoneNumber(user),
+                        new com.twilio.type.PhoneNumber(TWILIO_PHONE_NUMBER),
+                        ("Price for your tracked product " + product.name + " has dropped to - " + currentPrice)
+                ).create();
             }
+            //}
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -94,16 +92,26 @@ class ScraperThread extends Thread {
 }
 
 @Component
+@RequiredArgsConstructor
 class ProductScraperJob {
 
-    @Autowired
-    public ProductRepository productRepository;
+    @Resource(name = "productRepository")
+    private final ProductRepository productRepository;
 
-    @Scheduled(cron = "0 0 * * * ?")
+    @Value("${custom.twilio.phone.number}")
+    private String TWILIO_PHONE_NUMBER;
+
+    @Value("${twilio.account.sid}")
+    private String ACCOUNT_SID;
+
+    @Value("${twilio.auth.token}")
+    private String AUTH_TOKEN;
+
+    @Scheduled(cron = "0 * * * * ?")
     public void scrapeProducts() {
         List<Product> products = productRepository.findAll();
         for (Product product : products) {
-            ScraperThread thread = new ScraperThread(product, productRepository);
+            ScraperThread thread = new ScraperThread(product, productRepository, AUTH_TOKEN, ACCOUNT_SID, TWILIO_PHONE_NUMBER);
             thread.start();
         }
     }

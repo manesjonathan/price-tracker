@@ -23,7 +23,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-data-mongodb'
 	implementation 'com.twilio.sdk:twilio:8.23.0'
-	implementation 'org.jsoup:jsoup:1.13.1'
+	implementation 'org.jsoup:jsoup:1.15.4'
 
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
